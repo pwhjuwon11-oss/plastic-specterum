@@ -4,8 +4,6 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>과학전람회 제출용 RGB 스펙트럼 재질 후보 선별 웹앱</title>
-<script src="https://cdn.tailwindcss.com"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
   :root{
     --lab-bg:#eef6ff;
@@ -39,7 +37,30 @@
   .lab-input{ background:#ffffff; border:1px solid #b8d8f1; color:#263238; }
   .lab-input:focus{ outline:2px solid rgba(25,118,210,.2); border-color:#1976d2; }
   .chart-panel{ background:#ffffff; border:1px solid #d8e7f5; border-radius:18px; padding:12px; }
+
+/* Offline Tailwind subset: generated for this single-file exhibition app */
+.max-w-6xl{max-width:72rem}.mx-auto{margin-left:auto;margin-right:auto}.p-4{padding:1rem}.p-5{padding:1.25rem}.p-6{padding:1.5rem}.md\:p-6{padding:1.5rem}
+.mb-2{margin-bottom:.5rem}.mb-3{margin-bottom:.75rem}.mb-5{margin-bottom:1.25rem}.mb-6{margin-bottom:1.5rem}.mt-1{margin-top:.25rem}.mt-2{margin-top:.5rem}.mt-3{margin-top:.75rem}.mt-4{margin-top:1rem}
+.mr-4{margin-right:1rem}.block{display:block}.inline-block{display:inline-block}.flex{display:flex}.flex-wrap{flex-wrap:wrap}.grid{display:grid}.hidden{display:none}
+.grid-cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}.gap-2{gap:.5rem}.gap-3{gap:.75rem}.gap-4{gap:1rem}.gap-5{gap:1.25rem}
+.w-full{width:100%}.min-h-screen{min-height:100vh}.overflow-hidden{overflow:hidden}.overflow-x-auto{overflow-x:auto}.relative{position:relative}.absolute{position:absolute}.right-6{right:1.5rem}.top-6{top:1.5rem}
+.rounded{border-radius:.25rem}.rounded-xl{border-radius:.75rem}.rounded-3xl{border-radius:1.5rem}.rounded-full{border-radius:9999px}
+.border{border-width:1px;border-style:solid}.border-0{border:0}.border-blue-200{border-color:#bfdbfe}.bg-white{background:#fff}.bg-blue-100{background:#dbeafe}.bg-amber-400{background:#fbbf24}
+.px-2{padding-left:.5rem;padding-right:.5rem}.px-3{padding-left:.75rem;padding-right:.75rem}.px-4{padding-left:1rem;padding-right:1rem}.py-1{padding-top:.25rem;padding-bottom:.25rem}.py-2{padding-top:.5rem;padding-bottom:.5rem}
+.text-xs{font-size:.75rem}.text-sm{font-size:.875rem}.text-lg{font-size:1.125rem}.text-2xl{font-size:1.5rem}.text-5xl{font-size:3rem}.font-bold{font-weight:700}.font-black{font-weight:900}
+.text-slate-600{color:#475569}.text-slate-700{color:#334155}.text-slate-950{color:#020617}.text-blue-800{color:#1e40af}.text-blue-900{color:#1e3a8a}.text-blue-950{color:#172554}
+.leading-6{line-height:1.5rem}.shadow-sm{box-shadow:0 1px 2px rgba(0,0,0,.05)}.opacity-10{opacity:.1}
+input::file-selector-button{margin-right:1rem;border-radius:.75rem;border:0;background:#fbbf24;padding:.5rem 1rem;font-weight:700;color:#020617}
+@media (min-width:768px){.md\:grid-cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}.md\:grid-cols-5{grid-template-columns:repeat(5,minmax(0,1fr))}.md\:p-6{padding:1.5rem}.md\:text-3xl{font-size:1.875rem}}
+
 </style>
+<link rel="manifest" href="./manifest.json">
+<meta name="theme-color" content="#0f4c81">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Spectrum">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="apple-touch-icon" href="./icon-192.png">
+
 </head>
 <body class="min-h-screen">
 <div class="max-w-6xl mx-auto p-4 md:p-6">
@@ -137,6 +158,93 @@
   </div>
 </section>
 </div>
+
+
+<script>
+/* Offline Chart.js-compatible mini renderer for line charts used in this app */
+(function(){
+  function resolveCanvas(target){
+    if (!target) return null;
+    if (target.canvas) return target.canvas;
+    return target;
+  }
+  function getColor(ds, i){
+    return ds.borderColor || ds.backgroundColor || ["#263238","#d32f2f","#2e7d32","#1565c0","#f9a825"][i%5];
+  }
+  class MiniChart{
+    constructor(target, config){
+      this.canvas = resolveCanvas(target);
+      this.ctx = this.canvas.getContext("2d");
+      this.config = config || {};
+      this.data = this.config.data || {};
+      this.options = this.config.options || {};
+      this.draw();
+      this._resize = () => this.draw();
+      window.addEventListener("resize", this._resize);
+    }
+    update(){ this.draw(); }
+    destroy(){
+      window.removeEventListener("resize", this._resize);
+      if(this.ctx) this.ctx.clearRect(0,0,this.canvas.width,this.canvas.height);
+    }
+    draw(){
+      const canvas=this.canvas, ctx=this.ctx;
+      const parent=canvas.parentElement || canvas;
+      const cssW=Math.max(300, parent.clientWidth ? parent.clientWidth-24 : 640);
+      const cssH=320;
+      const dpr=window.devicePixelRatio || 1;
+      canvas.style.width=cssW+"px"; canvas.style.height=cssH+"px";
+      canvas.width=Math.floor(cssW*dpr); canvas.height=Math.floor(cssH*dpr);
+      ctx.setTransform(dpr,0,0,dpr,0,0);
+      ctx.clearRect(0,0,cssW,cssH);
+      const datasets=(this.data.datasets || []);
+      const labels=this.data.labels || [];
+      let all=[];
+      datasets.forEach(ds => (ds.data||[]).forEach(v=>{v=Number(v); if(Number.isFinite(v)) all.push(v);}));
+      const left=54, right=18, top=44, bottom=44, w=cssW-left-right, h=cssH-top-bottom;
+      ctx.fillStyle="#263238"; ctx.font="bold 14px sans-serif";
+      const title=this.options?.plugins?.title?.text || "";
+      if(title) ctx.fillText(Array.isArray(title)?title.join(" "):title, left, 24);
+      if(!all.length){
+        ctx.fillStyle="#64748b"; ctx.font="13px sans-serif";
+        ctx.fillText("사진을 업로드하면 그래프가 표시됩니다.", left, top+20);
+        return;
+      }
+      let min=Math.min(...all), max=Math.max(...all);
+      if(min===max){min-=1; max+=1;}
+      const n=Math.max(labels.length, ...datasets.map(ds=>(ds.data||[]).length), 1);
+      ctx.strokeStyle="#d8e7f5"; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.moveTo(left, top); ctx.lineTo(left, top+h); ctx.lineTo(left+w, top+h); ctx.stroke();
+      ctx.font="11px sans-serif";
+      for(let i=0;i<=4;i++){
+        let y=top+h-h*i/4, val=min+(max-min)*i/4;
+        ctx.strokeStyle="#eef2f7"; ctx.beginPath(); ctx.moveTo(left,y); ctx.lineTo(left+w,y); ctx.stroke();
+        ctx.fillStyle="#64748b"; ctx.fillText(val.toFixed(0), 6, y+4);
+      }
+      datasets.forEach((ds,di)=>{
+        const arr=(ds.data||[]).map(Number);
+        ctx.strokeStyle=getColor(ds,di); ctx.lineWidth=ds.borderWidth || 2;
+        ctx.beginPath();
+        arr.forEach((v,i)=>{
+          const x=left+(n<=1?0:i/(n-1)*w);
+          const y=top+h-((v-min)/(max-min))*h;
+          if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+        });
+        ctx.stroke();
+      });
+      let lx=left, ly=cssH-16;
+      ctx.font="12px sans-serif";
+      datasets.forEach((ds,di)=>{
+        ctx.fillStyle=getColor(ds,di); ctx.fillRect(lx, ly-8, 18, 3);
+        ctx.fillStyle="#263238"; ctx.fillText(ds.label || ("data"+(di+1)), lx+24, ly-4);
+        lx += Math.min(120, (ds.label||"data").length*8+54);
+      });
+    }
+  }
+  MiniChart.defaults = {color:"#263238", borderColor:"#d8e7f5", font:{family:"sans-serif"}};
+  window.Chart = MiniChart;
+})();
+</script>
 
 <script>
 Chart.defaults.color = "#263238";
@@ -571,6 +679,17 @@ function saveText(text, filename) {
 }
 renderBaselineTable();
 </script>
+
+<script>
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./service-worker.js")
+      .then(() => console.log("PWA offline ready"))
+      .catch(err => console.log("Service worker error:", err));
+  });
+}
+</script>
+
 </body>
 </html>
 <!-- pages rebuild -->
