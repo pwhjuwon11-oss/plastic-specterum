@@ -1,3 +1,8 @@
+
+
+
+
+
 <!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -66,7 +71,7 @@ input::file-selector-button{margin-right:1rem;border-radius:.75rem;border:0;back
 <div class="max-w-6xl mx-auto p-4 md:p-6">
 <header class="mb-6 lab-card rounded-3xl p-6 overflow-hidden relative">
   <div class="absolute right-6 top-6 text-5xl opacity-10">🔬</div>
-  <div class="inline-block bg-blue-100 text-blue-900 border border-blue-200 font-black text-xs px-3 py-1 rounded-full mb-3">SCIENCE FAIR SUBMISSION UI · RGB SPECTRUM V7</div>
+  <div class="inline-block bg-blue-100 text-blue-900 border border-blue-200 font-black text-xs px-3 py-1 rounded-full mb-3">SCIENCE FAIR SUBMISSION UI · RGB SPECTRUM V8 · STEP 1</div>
   <h1 class="text-2xl md:text-3xl font-black text-blue-950">가시광 RGB 스펙트럼 기반 플라스틱 재질 후보 선별 시스템</h1>
   <p class="text-slate-600 mt-2">Smartphone Visible Spectrum Analysis Based Material Screening</p>
   <p class="text-slate-600 mt-3 leading-6">사진을 업로드하면 ROI 내부의 RGB/Gray profile을 추출하고, 기준 데이터와 비교하여 PP·PET·PS 후보를 제시합니다.</p>
@@ -134,8 +139,17 @@ input::file-selector-button{margin-right:1rem;border-radius:.75rem;border:0;back
 </section>
 
 <section class="lab-card rounded-3xl p-5 mb-5">
-  <h2 class="font-bold text-lg mb-3">5. 입력 사진 특징값</h2>
-  <div id="featureTable" class="table-wrap text-sm"></div>
+  <div class="flex flex-wrap" style="align-items:center;justify-content:space-between;gap:.75rem">
+    <div>
+      <h2 class="font-bold text-lg mb-2">5. 입력 사진 특징값</h2>
+      <p class="text-sm text-slate-600">기본 모드에서는 핵심 특징값만, 연구자 모드에서는 계산된 전체 특징값을 표시합니다.</p>
+    </div>
+    <label class="lab-button-secondary rounded-xl px-4 py-2" style="display:flex;align-items:center;gap:.5rem;cursor:pointer">
+      <input id="researchMode" type="checkbox"> 연구자 모드
+    </label>
+  </div>
+  <div id="researchSummary" class="hidden mt-4"></div>
+  <div id="featureTable" class="table-wrap text-sm mt-4"></div>
 </section>
 
 <section class="lab-card rounded-3xl p-5 mb-5">
@@ -276,6 +290,7 @@ document.getElementById('downloadNormBtn').addEventListener('click', () => downl
 document.getElementById('downloadFeatBtn').addEventListener('click', downloadFeatures);
 document.getElementById('centerRoiBtn').addEventListener('click', centerRoi);
 document.getElementById('resetRoiBtn').addEventListener('click', resetRoi);
+document.getElementById('researchMode').addEventListener('change', () => { renderFeatureTable(); renderResearchSummary(); });
 ['roiX','roiY','roiW','roiH','profileDir','knnK'].forEach(id => document.getElementById(id).addEventListener('change', analyzeCurrent));
 setupRoiDragging();
 
@@ -310,6 +325,7 @@ function analyzeCurrent() {
   renderFinalResult();
   renderCharts();
   renderFeatureTable();
+  renderResearchSummary();
   renderDistanceTable();
   renderBaselineTable();
   document.getElementById('roiInfo').textContent = `ROI: x=${roi.x}, y=${roi.y}, w=${roi.w}, h=${roi.h}, area=${roi.w*roi.h} / 회전 후 이미지=${rotatedCanvas.width}×${rotatedCanvas.height} / profile=${document.getElementById('profileDir').value}`;
@@ -622,10 +638,54 @@ function renderDistanceTable() {
     <table><thead><tr><th>순위</th><th>기준 샘플</th><th>재질</th><th>Distance</th></tr></thead><tbody>${neighborRows}</tbody></table>
   `;
 }
-function renderFeatureTable() {
-  const rows=CORE_FEATURES.map(k=>`<tr><td>${k}</td><td class="mono">${fmt(inputFeatures[k])}</td></tr>`).join('');
-  document.getElementById('featureTable').innerHTML = `<table><thead><tr><th>특징값</th><th>입력 사진 값</th></tr></thead><tbody>${rows}</tbody></table>`;
+function featureGroup(key) {
+  if (key.startsWith('Gray_')) return 'Gray';
+  if (key.startsWith('R_')) return 'Red';
+  if (key.startsWith('G_')) return 'Green';
+  if (key.startsWith('B_')) return 'Blue';
+  return '채널 비교';
 }
+function featureMeaning(key) {
+  const map = {
+    mean:'평균 밝기', std:'표준편차', min:'최솟값', max:'최댓값', range:'최대-최소 범위',
+    peak_x:'최대 피크 위치(px)', min_x:'최솟값 위치(px)', global_slope_norm:'전체 정규화 기울기',
+    left_mean:'왼쪽 구간 평균', mid_mean:'중앙 구간 평균', right_mean:'오른쪽 구간 평균',
+    left_mid_ratio:'왼쪽/중앙 비율', right_mid_ratio:'오른쪽/중앙 비율', area_norm:'정규화 면적',
+    skew_norm:'정규화 왜도', kurt_norm:'정규화 첨도'
+  };
+  for (const [suffix,label] of Object.entries(map)) if (key.endsWith(suffix)) return label;
+  if (/_[qQ][1-5]_mean_norm$/.test(key)) return '5구간 정규화 평균';
+  if (/_[qQ][1-5]_slope_norm$/.test(key)) return '5구간 정규화 기울기';
+  if (key.endsWith('_mean_ratio')) return '채널 평균 비율';
+  if (key.includes('peak_minus')) return '채널 피크 위치 차이(px)';
+  return '분류용 계산 특징값';
+}
+function renderFeatureTable() {
+  const table = document.getElementById('featureTable');
+  if (!inputFeatures) { table.innerHTML='<p class="text-slate-600">사진을 업로드하면 특징값이 표시됩니다.</p>'; return; }
+  const research = document.getElementById('researchMode').checked;
+  const keys = research ? ALL_FEATURES.filter(k => k in inputFeatures) : CORE_FEATURES.filter(k => k in inputFeatures);
+  const rows=keys.map((k,i)=>`<tr><td class="mono">${i+1}</td><td>${featureGroup(k)}</td><td class="mono">${k}</td><td>${featureMeaning(k)}</td><td class="mono">${fmt(inputFeatures[k])}</td></tr>`).join('');
+  table.innerHTML = `<table><thead><tr><th>No.</th><th>그룹</th><th>특징값</th><th>의미</th><th>입력 사진 값</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+function renderResearchSummary() {
+  const box=document.getElementById('researchSummary');
+  if (!document.getElementById('researchMode').checked || !inputFeatures) { box.classList.add('hidden'); box.innerHTML=''; return; }
+  box.classList.remove('hidden');
+  const roi=getRoi();
+  const filename=document.getElementById('fileInput').files?.[0]?.name || '-';
+  box.innerHTML=`<div class="lab-card-soft border border-blue-200 rounded-xl p-4">
+    <div class="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
+      <div><b>파일명</b><br><span class="mono">${escapeHtml(filename)}</span></div>
+      <div><b>전체 특징 수</b><br><span class="mono">${ALL_FEATURES.filter(k=>k in inputFeatures).length}</span></div>
+      <div><b>Profile 방향</b><br><span class="mono">${document.getElementById('profileDir').value}</span></div>
+      <div><b>ROI</b><br><span class="mono">${roi.w}×${roi.h}</span></div>
+      <div><b>측정 시각</b><br><span class="mono">${new Date().toLocaleString('ko-KR')}</span></div>
+    </div>
+    <p class="text-xs text-slate-600 mt-3">현재 단계에서는 특징값 확인 기능을 확장했습니다. 누적 저장은 다음 단계에서 추가합니다.</p>
+  </div>`;
+}
+function escapeHtml(v) { return String(v).replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
 function renderBaselineTable() {
   const rows=CORE_FEATURES.map(k=>`<tr><td>${k}</td>${CLASS_ORDER.map(m=>`<td class="mono">${fmt(BASELINE[m][k])}</td>`).join('')}</tr>`).join('');
   document.getElementById('baselineTable').innerHTML = `<table><thead><tr><th>특징값</th>${CLASS_ORDER.map(m=>`<th>${m} 평균</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table>`;
@@ -669,9 +729,21 @@ function downloadProfile(norm=false) {
 }
 function downloadFeatures() {
   if (!inputFeatures) return alert('먼저 분석하세요.');
-  let csv = 'feature,value\n';
-  ALL_FEATURES.forEach(k => { if (k in inputFeatures) csv += `${k},${inputFeatures[k]}\n`; });
-  saveText(csv,'webapp_features.csv');
+  const roi=getRoi();
+  const filename=document.getElementById('fileInput').files?.[0]?.name || '';
+  let csv = '\ufeffmetadata,value\n';
+  csv += `source_filename,${csvCell(filename)}\n`;
+  csv += `measured_at,${csvCell(new Date().toISOString())}\n`;
+  csv += `profile_direction,${csvCell(document.getElementById('profileDir').value)}\n`;
+  csv += `roi_x,${roi.x}\nroi_y,${roi.y}\nroi_w,${roi.w}\nroi_h,${roi.h}\n`;
+  csv += '\nfeature,group,meaning,value\n';
+  ALL_FEATURES.forEach(k => { if (k in inputFeatures) csv += `${csvCell(k)},${csvCell(featureGroup(k))},${csvCell(featureMeaning(k))},${inputFeatures[k]}\n`; });
+  const stem=(filename || 'spectrum').replace(/\.[^.]+$/,'').replace(/[^a-zA-Z0-9가-힣_-]+/g,'_');
+  saveText(csv,`${stem}_features_step1.csv`);
+}
+function csvCell(v) {
+  const t=String(v ?? '');
+  return /[",\n]/.test(t) ? `"${t.replace(/"/g,'""')}"` : t;
 }
 function saveText(text, filename) {
   const blob=new Blob([text],{type:'text/csv;charset=utf-8'});
